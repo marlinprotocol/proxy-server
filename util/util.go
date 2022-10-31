@@ -2,6 +2,8 @@ package util
 
 import (
 	"errors"
+	"os"
+	"os/user"
 	"strconv"
 	"strings"
 
@@ -67,3 +69,57 @@ func IsVsock(host string) bool {
 	return true
 }
 
+func CreateDirPathIfNotExists(dirPath string) error {
+	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+		currentUser, err := GetUser()
+		if err != nil {
+			return err
+		}
+		uid, err := strconv.Atoi(currentUser.Uid)
+		if err != nil {
+			return err
+		}
+		gid, err := strconv.Atoi(currentUser.Gid)
+		if err != nil {
+			return err
+		}
+		createErr := os.MkdirAll(dirPath, 0777)
+		if createErr != nil {
+			return createErr
+		}
+		return os.Chown(dirPath, uid, gid)
+	}
+	return nil
+}
+
+func GetUser() (*user.User, error) {
+	usr, err := user.Current()
+	if err != nil {
+		return nil, err
+	}
+
+	if os.Geteuid() == 0 {
+		// Root, try to retrieve SUDO_USER if exists
+		if u := os.Getenv("SUDO_USER"); u != "" {
+			usr, err = user.Lookup(u)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return usr, nil
+}
+
+func CheckFile(filename string) (bool, error) {
+    _, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		_, err := os.Create(filename)
+		if err != nil {
+			return false, err
+		} else {
+			return false, nil
+		}
+	}
+	return true, nil
+}

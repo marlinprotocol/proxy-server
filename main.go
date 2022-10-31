@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/marlin/proxy-server/proxy"
@@ -13,19 +14,21 @@ import (
 )
 
 func main() {
-	listenSTDIN()
-	// port, err := strconv.Atoi(os.Args[1])
-	// cid, err := strconv.Atoi(os.Args[2])
+	// listenSTDIN()
+	port, err := strconv.Atoi(os.Args[1])
+	if err != nil {
+		log.Panic("Error reading command line args:", err.Error())
+	}
 
-	// if err != nil {
-	// 	fmt.Println("Error reading command line args:", err.Error())
-	// 	os.Exit(1)
-	// }
+	cid, err := strconv.Atoi(os.Args[2])
+	if err != nil {
+		log.Panic("Error reading command line args:", err.Error())
+	}
 
-	// requests := make(chan request)
+	requests := make(chan request)
 
-	// go listen(uint32(cid), uint32(port), requests)
-	// go proxyLauncher(requests)
+	go listen(uint32(cid), uint32(port), requests)
+	go proxyLauncher(requests)
 }
 
 func listen(cid uint32, port uint32, reqs chan request) error {
@@ -40,7 +43,7 @@ func listen(cid uint32, port uint32, reqs chan request) error {
 	for {
 		n, err := vsockCon.Read(buffer)
 		if err != nil {
-			fmt.Println("Error reading buffer: ", err.Error())
+			log.Error("Error reading buffer: ", err.Error())
 			return err
 		}
 		if n > 0 {
@@ -101,6 +104,10 @@ func parseRequest(input string) (request, error) {
 
 func proxyLauncher(reqs chan request) {
 	proxy := proxy.GetProxyInstance()
+	err := proxy.ResetRunningInstances()
+	if err != nil {
+		log.Error("Error loading running proxies: ", err)
+	}
 	for {
 		select {
 		case request := <- reqs:
