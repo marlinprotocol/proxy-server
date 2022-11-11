@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/marlin/proxy-server/proxy"
 	vsock "github.com/mdlayher/vsock"
@@ -24,24 +25,23 @@ func main() {
 	if err != nil {
 		log.Panic("Error reading command line args:", err.Error())
 	}
-
+	
 	requests := make(chan request)
-
-	go listen(uint32(cid), uint32(port), requests)
-	go proxyLauncher(requests)
-}
-
-func listen(cid uint32, port uint32, reqs chan request) error {
-
-	vsockCon, err := vsock.Dial(cid, port, nil)
+	vsockCon, err := vsock.Dial(uint32(cid), uint32(port), nil)
 	if err != nil {
 		log.Error(err)
-		return err
 	}
-	defer vsockCon.Close()			
+	var m sync.Mutex
+	go listen(vsockCon, requests, &m)
+	go proxyLauncher(vsockCon ,requests, &m)
+}
+
+func listen(vsockCon *vsock.Conn, reqs chan request, m *sync.Mutex) error {		
 	buffer := make([]byte, 10240)
 	for {
+		m.Lock()
 		n, err := vsockCon.Read(buffer)
+		m.Unlock()
 		if err != nil {
 			log.Error("Error reading buffer: ", err.Error())
 			return err
@@ -102,7 +102,7 @@ func parseRequest(input string) (request, error) {
 	}
 } 
 
-func proxyLauncher(reqs chan request) {
+func proxyLauncher(vsockCon *vsock.Conn ,reqs chan request, m *sync.Mutex) {
 	proxy := proxy.GetProxyInstance()
 	err := proxy.ResetRunningInstances()
 	if err != nil {
@@ -116,13 +116,33 @@ func proxyLauncher(reqs chan request) {
 					err := proxy.LaunchTcpToVsock(request.TcpAddress, request.VsockAddress)
 					if err != nil {
 						log.Error(err)
-						//send error on socket
+						m.Lock()
+						if _, err := vsockCon.Write([]byte("ERROR : " + err.Error())); err != nil {
+							log.Error("Error send response")
+						}
+						m.Unlock()
+					} else {
+						m.Lock()
+						if _, err := vsockCon.Write([]byte("SUCCESS")); err != nil {
+							log.Error("Error send response")
+						}
+						m.Unlock()
 					}
 				} else {
 					err := proxy.DestroyTcpToVsock(request.TcpAddress, request.VsockAddress)
 					if err != nil {
 						log.Error(err)
-						//send error on socket
+						m.Lock()
+						if _, err := vsockCon.Write([]byte("ERROR : " + err.Error())); err != nil {
+							log.Error("Error send response")
+						}
+						m.Unlock()
+					} else {
+						m.Lock()
+						if _, err := vsockCon.Write([]byte("SUCCESS")); err != nil {
+							log.Error("Error send response")
+						}
+						m.Unlock()
 					}
 				}
 			} else {
@@ -130,13 +150,33 @@ func proxyLauncher(reqs chan request) {
 					err := proxy.LaunchVsockToTcp(request.TcpAddress, request.VsockAddress)
 					if err != nil {
 						log.Error(err)
-						//send error on socket
+						m.Lock()
+						if _, err := vsockCon.Write([]byte("ERROR : " + err.Error())); err != nil {
+							log.Error("Error send response")
+						}
+						m.Unlock()
+					} else {
+						m.Lock()
+						if _, err := vsockCon.Write([]byte("SUCCESS")); err != nil {
+							log.Error("Error send response")
+						}
+						m.Unlock()
 					}
 				} else {
 					err := proxy.DestroyVsockToTcp(request.TcpAddress, request.VsockAddress)
 					if err != nil {
 						log.Error(err)
-						//send error on socket
+						m.Lock()
+						if _, err := vsockCon.Write([]byte("ERROR : " + err.Error())); err != nil {
+							log.Error("Error send response")
+						}
+						m.Unlock()
+					} else {
+						m.Lock()
+						if _, err := vsockCon.Write([]byte("SUCCESS")); err != nil {
+							log.Error("Error send response")
+						}
+						m.Unlock()
 					}
 				}
 			}
